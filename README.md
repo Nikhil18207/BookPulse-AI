@@ -1,71 +1,76 @@
+# BookPulse-AI Chatbot
 
-## 🚀 Features
-- AI-powered chatbot using Llama 3
-- WebSocket-based real-time communication
-- Firebase Firestore integration for chat logging
-- Automatic reconnection and keep-alive functionality
-- API request retries for robustness
+BookPulse-AI is an AI-powered chatbot designed for bookstores, providing engaging and lead-driven responses. It leverages FastAPI, WebSockets, Firebase Firestore, and Together AI's Llama 3 model to offer real-time interactions.
 
-## 📂 Project Structure
-```
-BookPulse-AI/
-├── main.py               # FastAPI application with WebSocket support
-├── api_test.py           # API testing script
-├── db.py                 # Database connection management
-├── .env                  # Environment variables (API keys, credentials)
-├── .gitignore            # Ignored files (API keys, logs, virtual environments)
-└── README.md             # Project documentation
-```
+## Features
+- AI chatbot powered by Together AI (Llama 3)
+- WebSocket-based real-time chat
+- Firestore integration for chat history storage
+- Automatic Firebase reinitialization for stability
+- Keep-alive mechanism to maintain WebSocket connection
 
-## 🛠️ Installation & Setup
-### 1️⃣ Clone the Repository
+## Installation
+
+### Prerequisites
+- Python 3.10+
+- Firebase Firestore credentials (JSON file)
+- Together AI API Key
+
+### Setup
+1. Clone the repository:
+   ```sh
+   git clone https://github.com/your-repo/BookPulse-AI.git
+   cd BookPulse-AI
+   ```
+
+2. Create and activate a virtual environment:
+   ```sh
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+
+3. Install dependencies:
+   ```sh
+   pip install -r requirements.txt
+   ```
+
+4. Set up environment variables:
+   - Create a `.env` file:
+     ```sh
+     touch .env
+     ```
+   - Add the following variables:
+     ```ini
+     TOGETHER_API_KEY=your_api_key_here
+     ```
+
+5. Add your Firebase credentials JSON file and update the path in `main.py`:
+   ```python
+   cred = credentials.Certificate("path/to/your-firebase.json")
+   ```
+
+## Running the Application
 ```sh
-git clone https://github.com/yourusername/BookPulse-AI.git
-cd BookPulse-AI
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 2️⃣ Set Up a Virtual Environment (Optional but Recommended)
-```sh
-python -m venv venv
-source venv/bin/activate  # On Windows use `venv\Scripts\activate`
-```
-
-### 3️⃣ Install Dependencies
-```sh
-pip install -r requirements.txt
-```
-
-### 4️⃣ Configure Environment Variables
-Create a `.env` file in the project root and add:
-```ini
-TOGETHER_API_KEY=your_together_api_key
-```
-
-### 5️⃣ Set Up Firebase Credentials
-'''
-cred = credentials.Certificate("/path/to/your/firebase.json")
-```
-
-### 6️⃣ Run the Server
-```sh
-uvicorn main:app --reload
-```
-
-## 🔌 WebSocket Usage
-Connect to the WebSocket endpoint using any WebSocket client:
+## WebSocket Usage
+Connect to WebSocket endpoint:
 ```
 ws://localhost:8000/ws/chat
 ```
 Send a message and receive AI-generated responses.
 
-## 🔒 Security & Best Practices
-- **DO NOT** commit `.env` or Firebase credentials to version control.
-- Add the following to your `.gitignore`:
-  ```
-  .env
-  chatlogs-*.json
-  __pycache__/
-  venv/
-  *.log
-  ```
-- Rotate API keys periodically.
+## API Overview
+- **WebSocket Endpoint:** `/ws/chat` 
+  - Sends messages and receives chatbot responses in real-time.
+  - Includes keep-alive mechanism to prevent disconnects.
+
+## Deployment
+You can deploy the application using Docker, AWS, or any cloud provider supporting FastAPI.
+
+## Contributing
+Feel free to fork this project and contribute!
+
+## License
+MIT License
