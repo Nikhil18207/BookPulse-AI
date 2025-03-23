@@ -3,8 +3,6 @@ from dotenv import load_dotenv
 import requests
 
 load_dotenv()
-print("API Key:", os.getenv("TOGETHER_API_KEY"))  # Debugging
-
 TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
 if not TOGETHER_API_KEY:
     raise ValueError("API Key not found! Check your .env file.")
@@ -13,7 +11,7 @@ url = "https://api.together.xyz/v1/chat/completions"
 
 def chat_with_mixtral(prompt):
     payload = {
-    "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",  # Use this model name
+    "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",  
     "messages": [{"role": "user", "content": prompt}]
 }
 
@@ -27,7 +25,7 @@ def chat_with_mixtral(prompt):
     else:
         return f"Error: {response.text}"
 
-# Test the chatbot
+
 while True:
     user_input = input("You: ")
     if user_input.lower() in ["exit", "quit"]:
