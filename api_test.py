@@ -1,7 +1,15 @@
-import requests
+import websockets
+import asyncio
 
-url = "http://127.0.0.1:8000/chat"
-data = {"message": "suggest me 3 horro books"}
-response = requests.post(url, json=data)
+async def chat():
+    uri = "ws://127.0.0.1:8000/ws/chat"
+    async with websockets.connect(uri) as websocket:
+        while True:
+            msg = input("You: ")
+            if msg.lower() in ["exit", "quit"]:
+                break
+            await websocket.send(msg)
+            response = await websocket.recv()
+            print(f"Bot: {response}")
 
-print(response.json())
+asyncio.run(chat())
