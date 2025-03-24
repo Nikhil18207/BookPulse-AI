@@ -38,6 +38,8 @@ async def chat_with_mixtral(prompt):
     Ensures short, engaging, and lead-driven responses.
     """
     system_prompt = "You are a helpful AI assistant for a bookstore. " \
+                    "You're based in india so have the prices in Rupees" \
+                    "Use emojis to make the conversation friendly 😊. " \
                     "Keep responses short (1-2 sentences), engaging, and lead-focused. " \
                     "Encourage book purchases or capture leads for follow-ups."
 
