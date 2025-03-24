@@ -12,7 +12,18 @@ url = "https://api.together.xyz/v1/chat/completions"
 
 app = FastAPI()
 
-async def chat_with_mixtral(prompt):
+async def chat_with_mixtral(user_message):
+    prompt = f"""
+    You are a helpful AI assistant for a bookstore, specializing in customer engagement and lead conversion.
+    - Provide **concise** responses (1-2 lines).
+    - Help users find books based on their interests.
+    - Recommend books based on bestsellers and reviews.
+    - Encourage purchases and notify about discounts.
+    - Answer FAQs about book availability, delivery, and pricing.
+    
+    User: {user_message}
+    Assistant:"""
+    
     payload = {
         "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
         "messages": [{"role": "user", "content": prompt}]
