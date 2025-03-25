@@ -46,9 +46,9 @@ def extract_book_name(text):
     books = [ent.text for ent in doc.ents if ent.label_ in ["WORK_OF_ART"]]
     return books if books else None
 
-async def chat_with_mixtral(prompt):
+async def chat_with_mixtral(prompt, chat_history):
     """
-    Sends user input to Together AI API and returns chatbot response.
+    Sends user input along with past conversation history to Together AI API.
     """
     system_prompt = "You are a helpful AI assistant for an online bookstore. " \
                     "You're based in India, so show prices in Rupees. " \
@@ -61,12 +61,11 @@ async def chat_with_mixtral(prompt):
         book_list = ", ".join(book_names)
         system_prompt += f"\nUser is interested in these books: {book_list}. Provide relevant information or purchase links."
 
+    messages = [{"role": "system", "content": system_prompt}] + chat_history + [{"role": "user", "content": prompt}]
+
     payload = {
         "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt}
-        ],
+        "messages": messages,
         "max_tokens": 100
     }
     headers = {"Authorization": f"Bearer {TOGETHER_API_KEY}"}
@@ -96,12 +95,32 @@ async def save_to_firestore(user_msg: str, bot_resp: str):
         print(f"Firestore Error: {e}")
         initialize_firebase()
 
+async def get_last_messages():
+    """
+    Fetches the last few messages from Firestore for context retention.
+    """
+    try:
+        messages_ref = db.collection("chat_history").order_by("timestamp", direction=firestore.Query.DESCENDING).limit(5)
+        messages = messages_ref.stream()
+
+        chat_history = []
+        for msg in messages:
+            data = msg.to_dict()
+            chat_history.append({"role": "user", "content": data["user_message"]})
+            chat_history.append({"role": "assistant", "content": data["bot_response"]})
+
+        return list(reversed(chat_history))  # Reverse to maintain chronological order
+    except Exception as e:
+        print(f"Firestore Fetch Error: {e}")
+        return []
+
 @app.websocket("/ws/chat")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     print("INFO: WebSocket connection opened")
 
     is_connected = True
+    chat_history = await get_last_messages()  # Load past context
 
     async def keep_alive():
         while is_connected:
@@ -127,7 +146,12 @@ async def websocket_endpoint(websocket: WebSocket):
             if data.strip().upper() == "PING":
                 continue
 
-            response = await chat_with_mixtral(data)
+            response = await chat_with_mixtral(data, chat_history)
+
+            # Update session chat history
+            chat_history.append({"role": "user", "content": data})
+            chat_history.append({"role": "assistant", "content": response})
+
             asyncio.create_task(save_to_firestore(data, response))
 
             await websocket.send_text(response)
