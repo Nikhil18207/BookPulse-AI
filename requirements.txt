@@ -4,3 +4,4 @@ firebase-admin
 python-dotenv
 uvicorn
 asyncio
+spacy
