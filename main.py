@@ -1,28 +1,35 @@
 import os
 import httpx
 import firebase_admin
+import spacy
 from firebase_admin import credentials, firestore
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from dotenv import load_dotenv
 import asyncio
+from datetime import datetime
 
 load_dotenv()
 
+# Load spaCy NLP model
+nlp = spacy.load("en_core_web_sm")
+
+# Firebase Initialization
 def initialize_firebase():
     global db
+    if firebase_admin._apps:
+        firebase_admin.delete_app(firebase_admin.get_app())
+
     try:
-        if firebase_admin._apps:
-            firebase_admin.delete_app(firebase_admin.get_app())  # Delete previous instance
         cred = credentials.Certificate("/var/home/ujjain/Desktop/code/BookPulse-AI/chatlogs-44941-firebase-adminsdk-fbsvc-a01056838e.json")
         firebase_admin.initialize_app(cred)
         db = firestore.client()
-        print("INFO: Firebase reinitialized successfully")
+        print("INFO: Firebase initialized successfully")
     except Exception as e:
         print(f"ERROR: Firebase initialization failed: {e}")
 
 initialize_firebase()
 
-# Together AI API Key
+# API Keys
 TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
 if not TOGETHER_API_KEY:
     raise ValueError("API Key not found! Check your .env file.")
@@ -31,17 +38,28 @@ TOGETHER_API_URL = "https://api.together.xyz/v1/chat/completions"
 
 app = FastAPI()
 
+def extract_book_name(text):
+    """
+    Uses spaCy Named Entity Recognition (NER) to detect book names from user input.
+    """
+    doc = nlp(text)
+    books = [ent.text for ent in doc.ents if ent.label_ in ["WORK_OF_ART"]]
+    return books if books else None
 
 async def chat_with_mixtral(prompt):
     """
-    Send a request to Together API and get a chatbot response.
-    Ensures short, engaging, and lead-driven responses.
+    Sends user input to Together AI API and returns chatbot response.
     """
-    system_prompt = "You are a helpful AI assistant for a bookstore. " \
-                    "You're based in india so have the prices in Rupees" \
+    system_prompt = "You are a helpful AI assistant for an online bookstore. " \
+                    "You're based in India, so show prices in Rupees. " \
                     "Use emojis to make the conversation friendly 😊. " \
-                    "Keep responses short (1-2 sentences), engaging, and lead-focused. " \
-                    "Encourage book purchases or capture leads for follow-ups."
+                    "Keep responses short, engaging, and lead-focused."
+
+    book_names = extract_book_name(prompt)
+
+    if book_names:
+        book_list = ", ".join(book_names)
+        system_prompt += f"\nUser is interested in these books: {book_list}. Provide relevant information or purchase links."
 
     payload = {
         "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
@@ -49,44 +67,42 @@ async def chat_with_mixtral(prompt):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt}
         ],
-        "max_tokens": 50  # Limit response length
+        "max_tokens": 100
     }
     headers = {"Authorization": f"Bearer {TOGETHER_API_KEY}"}
 
     async with httpx.AsyncClient() as client:
-        for _ in range(3):  # Retry up to 3 times
+        for _ in range(3):
             try:
                 response = await client.post(TOGETHER_API_URL, json=payload, headers=headers, timeout=10)
                 response.raise_for_status()
                 return response.json()["choices"][0]["message"]["content"]
             except httpx.RequestError as e:
                 print(f"API Error (Retrying...): {str(e)}")
-                await asyncio.sleep(1)  # Small delay before retrying
+                await asyncio.sleep(1)
             except httpx.HTTPStatusError as e:
                 return f"HTTP Error: {e.response.text}"
         return "AI model is currently unavailable. Please try again later."
-
 
 async def save_to_firestore(user_msg: str, bot_resp: str):
     global db
     try:
         db.collection("chat_history").document().set({
             "user_message": user_msg,
-            "bot_response": bot_resp
+            "bot_response": bot_resp,
+            "timestamp": datetime.utcnow()
         })
     except Exception as e:
         print(f"Firestore Error: {e}")
-        initialize_firebase()  
+        initialize_firebase()
 
-# === 🔹 WebSocket Route 🔹 ===
 @app.websocket("/ws/chat")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     print("INFO: WebSocket connection opened")
 
-    is_connected = True 
+    is_connected = True
 
-    # === 🔹 Keep WebSocket Alive with Pings (Handles Reconnection) ===
     async def keep_alive():
         while is_connected:
             try:
@@ -99,14 +115,17 @@ async def websocket_endpoint(websocket: WebSocket):
                 print("INFO: WebSocket already closed, stopping keep-alive task")
                 break
 
-    keep_alive_task = asyncio.create_task(keep_alive())  # Start keep-alive task
+    keep_alive_task = asyncio.create_task(keep_alive())
 
     while is_connected:
         try:
             data = await websocket.receive_text()
 
+            if not data.strip():
+                continue
+
             if data.strip().upper() == "PING":
-                continue  # Ignore PING messages from the client
+                continue
 
             response = await chat_with_mixtral(data)
             asyncio.create_task(save_to_firestore(data, response))
@@ -126,4 +145,4 @@ async def websocket_endpoint(websocket: WebSocket):
             is_connected = False
             break
 
-    keep_alive_task.cancel()  # Stop the keep-alive task when WebSocket is closed
+    keep_alive_task.cancel()
