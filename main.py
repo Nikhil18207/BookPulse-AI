@@ -7,7 +7,12 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from dotenv import load_dotenv
 import asyncio
 from datetime import datetime
+import random
+import string
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 
+# Load environment variables from .env file
 load_dotenv()
 
 # Load spaCy NLP model
@@ -31,6 +36,8 @@ initialize_firebase()
 
 # API Keys
 TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
+SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
+
 if not TOGETHER_API_KEY:
     raise ValueError("API Key not found! Check your .env file.")
 
@@ -56,7 +63,6 @@ async def chat_with_mixtral(prompt, chat_history):
                     "Keep responses short, engaging, and lead-focused."
 
     book_names = extract_book_name(prompt)
-
     if book_names:
         book_list = ", ".join(book_names)
         system_prompt += f"\nUser is interested in these books: {book_list}. Provide relevant information or purchase links."
@@ -83,7 +89,39 @@ async def chat_with_mixtral(prompt, chat_history):
                 return f"HTTP Error: {e.response.text}"
         return "AI model is currently unavailable. Please try again later."
 
+def generate_coupon():
+    """
+    Generates a unique 10-character coupon code.
+    """
+    letters_and_digits = string.ascii_uppercase + string.digits
+    return ''.join(random.choices(letters_and_digits, k=10))
+
+def send_coupon_email(user_email, coupon_code):
+    """
+    Sends an email using SendGrid with the discount coupon.
+    """
+    message = Mail(
+        from_email="ujjwalpardeshi@gmail.com",  # Replace with your verified email
+        to_emails=user_email,
+        subject="Your Special Discount Coupon 🎁",
+        html_content=f"""
+            <strong>Hi there! 💖 Here's a special gift for you!</strong><br>
+            Use the code <b>{coupon_code}</b> to get a discount on your next purchase. 
+            Thank you for being awesome! 🌟
+        """
+    )
+    try:
+        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        response = sg.send(message)
+        print(f"Email sent to {user_email}: {response.status_code}")
+    except Exception as e:
+        print(f"Email Error: {e}")
+
+
 async def save_to_firestore(user_msg: str, bot_resp: str):
+    """
+    Saves chat messages to Firebase Firestore.
+    """
     global db
     try:
         db.collection("chat_history").document().set({
@@ -95,32 +133,15 @@ async def save_to_firestore(user_msg: str, bot_resp: str):
         print(f"Firestore Error: {e}")
         initialize_firebase()
 
-async def get_last_messages():
-    """
-    Fetches the last few messages from Firestore for context retention.
-    """
-    try:
-        messages_ref = db.collection("chat_history").order_by("timestamp", direction=firestore.Query.DESCENDING).limit(5)
-        messages = messages_ref.stream()
-
-        chat_history = []
-        for msg in messages:
-            data = msg.to_dict()
-            chat_history.append({"role": "user", "content": data["user_message"]})
-            chat_history.append({"role": "assistant", "content": data["bot_response"]})
-
-        return list(reversed(chat_history))  # Reverse to maintain chronological order
-    except Exception as e:
-        print(f"Firestore Fetch Error: {e}")
-        return []
-
 @app.websocket("/ws/chat")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     print("INFO: WebSocket connection opened")
 
     is_connected = True
-    chat_history = await get_last_messages()  # Load past context
+    chat_history = []  # Only session-based context retention
+    user_email = None
+    message_count = 0  # Track messages for email prompt
 
     async def keep_alive():
         while is_connected:
@@ -144,6 +165,28 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
 
             if data.strip().upper() == "PING":
+                continue
+
+            message_count += 1
+
+            # Ask for email after 3 messages
+            if message_count == 3 and not user_email:
+                await websocket.send_text("Hey! 🎁 We'd love to send you a free gift! Please share your email 💖.")
+                continue
+
+            # If user provides email, store it and send coupon
+            if "@" in data and "." in data and user_email is None:
+                user_email = data.strip()
+                coupon_code = generate_coupon()
+                await websocket.send_text(f"Thanks! 🎉 Your discount code is: {coupon_code}. We've also emailed it to you! 📩")
+                send_coupon_email(user_email, coupon_code)
+
+                # Save email to Firebase
+                db.collection("user_emails").document().set({
+                    "email": user_email,
+                    "coupon_code": coupon_code,
+                    "timestamp": datetime.utcnow()
+                })
                 continue
 
             response = await chat_with_mixtral(data, chat_history)
