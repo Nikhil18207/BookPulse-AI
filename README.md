@@ -72,5 +72,7 @@ You can deploy the application using Docker, AWS, or any cloud provider supporti
 ## Contributing
 Feel free to fork this project and contribute!
 
+![image](https://github.com/user-attachments/assets/48dd2523-2171-41dc-9d60-69f411ab771d)
+
 ## License
 MIT License
